@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokeluxe Delivery Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="hero">
+            <div>
+                <p class="eyebrow">Logistica de live</p>
+                <h1>Pokeluxe Delivery Tracker</h1>
+                <p class="hero-copy">
+                    Centralize pedidos, acompanhe status de envio e gere um documento de entrega pronto para compartilhar com a equipe.
+                </p>
+            </div>
+            <div class="hero-actions">
+                <button id="refreshButton" class="secondary-button" type="button">Atualizar dados</button>
+                <button id="seedButton" class="ghost-button" type="button">Carregar exemplo</button>
+                <button id="exportCsvButton" class="ghost-button" type="button">Exportar CSV</button>
+                <button id="importCsvButton" class="secondary-button" type="button">Importar CSV</button>
+                <a class="secondary-button action-link" href="pokeluxe-modelo-pedidos.csv" download>Modelo CSV</a>
+                <input id="csvFileInput" type="file" accept=".csv,text/csv" hidden>
+            </div>
+        </header>
+
+        <main class="dashboard-grid">
+            <section class="panel form-panel">
+                <div class="panel-heading">
+                    <h2>Novo pedido</h2>
+                    <p>Preencha os dados da venda e salve no quadro logistico.</p>
+                </div>
+
+                <form id="orderForm" class="order-form">
+                    <label>
+                        ID do pedido
+                        <input id="pedidoId" name="pedidoId" type="text" placeholder="PX-2026-01" required>
+                    </label>
+
+                    <label>
+                        Nome do cliente
+                        <input id="cliente" name="cliente" type="text" placeholder="Alexandre Silva" required>
+                    </label>
+
+                    <label>
+                        Itens
+                        <textarea id="itens" name="itens" rows="4" placeholder="Booster Pack, Deck Selado, Pelucia Pikachu" required></textarea>
+                    </label>
+
+                    <div class="split-fields">
+                        <label>
+                            CEP
+                            <input id="cep" name="cep" type="text" inputmode="numeric" maxlength="9" placeholder="00000-000" required>
+                        </label>
+
+                        <label>
+                            Prazo estimado (dias)
+                            <input id="prazo" name="prazo" type="number" min="0" max="30" value="2" required>
+                        </label>
+                    </div>
+
+                    <div class="split-fields">
+                        <label>
+                            Status inicial
+                            <select id="status" name="status">
+                                <option value="EM_SEPARACAO">📦 EM SEPARACAO</option>
+                                <option value="ENVIADO">🚚 ENVIADO</option>
+                                <option value="ENTREGUE">✅ ENTREGUE</option>
+                            </select>
+                        </label>
+
+                        <label>
+                            Canal
+                            <select id="canal" name="canal">
+                                <option value="Live">Live</option>
+                                <option value="Site">Site</option>
+                                <option value="Marketplace">Marketplace</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <label>
+                        Codigo de rastreio
+                        <input id="codigoRastreio" name="codigoRastreio" type="text" placeholder="AB123456789BR">
+                    </label>
+
+                    <label>
+                        Transportadora
+                        <select id="transportadora" name="transportadora">
+                            <option value="CORREIOS">Correios</option>
+                            <option value="JADLOG">Jadlog</option>
+                            <option value="TOTAL_EXPRESS">Total Express</option>
+                            <option value="LOGGI">Loggi</option>
+                            <option value="OUTRA">Outra</option>
+                        </select>
+                    </label>
+
+                    <label>
+                        Observacoes internas
+                        <textarea id="observacoes" name="observacoes" rows="3" placeholder="Separar box comemorativo e etiqueta extra"></textarea>
+                    </label>
+
+                    <div class="address-preview" id="addressPreview">
+                        <strong>Endereco validado:</strong>
+                        <span>Aguardando consulta do CEP.</span>
+                    </div>
+
+                    <div class="form-actions">
+                        <button class="primary-button" type="submit">Salvar pedido</button>
+                        <button class="secondary-button" type="reset">Limpar formulario</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="panel summary-panel">
+                <div class="panel-heading">
+                    <h2>Painel rapido</h2>
+                    <p>Visao consolidada para acompanhar a operacao.</p>
+                </div>
+
+                <div class="stats-grid" id="statsGrid">
+                    <article class="stat-card">
+                        <span>Total</span>
+                        <strong id="totalPedidos">0</strong>
+                    </article>
+                    <article class="stat-card amber">
+                        <span>Em separacao</span>
+                        <strong id="totalSeparacao">0</strong>
+                    </article>
+                    <article class="stat-card blue">
+                        <span>Enviado</span>
+                        <strong id="totalEnviado">0</strong>
+                    </article>
+                    <article class="stat-card green">
+                        <span>Entregue</span>
+                        <strong id="totalEntregue">0</strong>
+                    </article>
+                </div>
+
+                <div class="document-panel">
+                    <div class="document-panel-header">
+                        <h3>Documento de entrega</h3>
+                        <button id="copyDocumentButton" class="ghost-button" type="button">Copiar texto</button>
+                    </div>
+                    <pre id="documentOutput" class="document-output">Selecione um pedido para gerar o texto formatado.</pre>
+                </div>
+            </section>
+
+            <section class="panel table-panel">
+                <div class="panel-heading inline-heading">
+                    <div>
+                        <h2>Fila de pedidos</h2>
+                        <p>Atualize o status e gere o resumo para o grupo.</p>
+                    </div>
+                    <button id="exportButton" class="secondary-button" type="button">Imprimir / PDF</button>
+                </div>
+
+                <div class="toolbar-row">
+                    <label>
+                        Buscar pedido
+                        <input id="searchInput" type="search" placeholder="Buscar por ID, cliente, item ou rastreio">
+                    </label>
+
+                    <label>
+                        Filtrar status
+                        <select id="statusFilter">
+                            <option value="TODOS">Todos</option>
+                            <option value="EM_SEPARACAO">📦 EM SEPARACAO</option>
+                            <option value="ENVIADO">🚚 ENVIADO</option>
+                            <option value="ENTREGUE">✅ ENTREGUE</option>
+                        </select>
+                    </label>
+
+                    <button id="copyTrackingButton" class="ghost-button" type="button">Copiar rastreio</button>
+                </div>
+
+                <div id="emptyState" class="empty-state">
+                    Nenhum pedido cadastrado ainda.
+                </div>
+
+                <div id="ordersList" class="orders-list"></div>
+            </section>
+        </main>
+    </div>
+
+    <template id="orderCardTemplate">
+        <article class="order-card">
+            <div class="order-card-header">
+                <div>
+                    <span class="order-id"></span>
+                    <h3 class="order-customer"></h3>
+                </div>
+                <span class="status-pill"></span>
+            </div>
+
+            <dl class="order-meta">
+                <div>
+                    <dt>Itens</dt>
+                    <dd class="order-items"></dd>
+                </div>
+                <div>
+                    <dt>CEP / Regiao</dt>
+                    <dd class="order-address"></dd>
+                </div>
+                <div>
+                    <dt>Prazo</dt>
+                    <dd class="order-deadline"></dd>
+                </div>
+                <div>
+                    <dt>Canal</dt>
+                    <dd class="order-channel"></dd>
+                </div>
+                <div>
+                    <dt>Rastreio</dt>
+                    <dd class="order-tracking"></dd>
+                </div>
+                <div>
+                    <dt>Transportadora</dt>
+                    <dd class="order-carrier"></dd>
+                </div>
+                <div>
+                    <dt>Link</dt>
+                    <dd class="order-tracking-link-wrapper">
+                        <a class="order-tracking-link" href="#" target="_blank" rel="noreferrer">Abrir rastreio</a>
+                    </dd>
+                </div>
+            </dl>
+
+            <p class="order-notes"></p>
+
+            <div class="tracking-editor">
+                <input class="tracking-input" type="text" placeholder="Atualizar codigo de rastreio">
+                <button class="secondary-button save-tracking-button" type="button">Salvar rastreio</button>
+            </div>
+
+            <div class="history-block">
+                <h4>Historico</h4>
+                <ul class="history-list"></ul>
+            </div>
+
+            <div class="order-card-actions">
+                <select class="status-select" aria-label="Alterar status do pedido"></select>
+                <button class="ghost-button select-order-button" type="button">Gerar documento</button>
+                <button class="danger-button delete-order-button" type="button">Excluir</button>
+            </div>
+        </article>
+    </template>
+
+    <script src="app.js"></script>
+</body>
+</html>

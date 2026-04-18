@@ -1,0 +1,2 @@
+id,pedidoId,customerName,items,postalCode,city,state,neighborhood,street,deadlineDays,estimatedShippingDate,status,channel,carrier,trackingCode,notes,history,createdAt,updatedAt
+exemplo-001,PX-2026-EX01,Alexandre Silva,"Booster Pack | Deck Selado",01001-000,Sao Paulo,SP,Centro,Rua modelo,2,2026-04-20T15:00:00.000Z,EM_SEPARACAO,Live,CORREIOS,,Separar sleeves e cupom,"2026-04-18T15:00:00.000Z::Pedido criado com status 📦 EM SEPARACAO",2026-04-18T15:00:00.000Z,2026-04-18T15:00:00.000Z
