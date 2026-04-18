@@ -15,6 +15,7 @@ Aplicacao web estatica para organizar pedidos da Pokeluxe, acompanhar status de 
 - Importacao e exportacao de pedidos em CSV.
 - Link direto para abrir o rastreio do pedido em Correios, Jadlog, Total Express ou Loggi.
 - Arquivo modelo CSV pronto para baixar e usar como base.
+- Metadados de pagina e favicon prontos para publicacao no GitHub Pages.
 - Persistencia local via `localStorage`.
 - Documento de entrega em texto pronto para copiar e opcao de impressao/PDF.
 - Botao de atualizacao para recarregar os dados mais recentes do navegador.
