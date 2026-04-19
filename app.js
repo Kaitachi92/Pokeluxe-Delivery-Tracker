@@ -988,7 +988,7 @@ function createStorageStatus(tier) {
         return {
             tier,
             isDurable: true,
-            message: "Sincronizacao gratuita ativa com Google Sheets. Os pedidos ficam disponiveis para outros acessos tambem."
+            message: ""
         };
     }
 
