@@ -1,5 +1,6 @@
 const STORAGE_KEY = "pokeluxe-delivery-tracker-v1";
-const STORAGE_MODE = "local";
+const GOOGLE_SHEETS_WEB_APP_URL = window.POKELUXE_GOOGLE_SHEETS_WEB_APP_URL || "";
+const STORAGE_MODE = GOOGLE_SHEETS_WEB_APP_URL ? "google-sheets" : "local";
 const STORAGE_FALLBACK_KEY = "__pokeluxe_delivery_tracker__";
 const CSV_BACKUP_STORAGE_KEY = "pokeluxe-delivery-tracker-csv-backup-v1";
 const CSV_BACKUP_META_STORAGE_KEY = "pokeluxe-delivery-tracker-csv-backup-meta-v1";
@@ -9,6 +10,7 @@ let currentStorageStatus = {
     message: "Persistencia temporaria ativa so nesta aba."
 };
 let currentBackupMeta = null;
+let remoteSyncInFlight = null;
 
 const STATUS_CONFIG = {
     EM_SEPARACAO: { label: "📦 EM SEPARACAO", className: "status-EM_SEPARACAO" },
@@ -74,6 +76,10 @@ wireEvents();
 syncBackupState();
 render();
 
+if (STORAGE_MODE === "google-sheets") {
+    void synchronizeRemoteOrders();
+}
+
 function wireEvents() {
     elements.orderForm.addEventListener("submit", handleCreateOrder);
     elements.orderForm.addEventListener("reset", handleResetForm);
@@ -88,9 +94,13 @@ function wireEvents() {
     elements.importCsvButton.addEventListener("click", () => elements.csvFileInput.click());
     elements.csvFileInput.addEventListener("change", importOrdersFromCsvFile);
     elements.exportButton.addEventListener("click", () => window.print());
-    elements.refreshButton.addEventListener("click", refreshFromStorage);
+    elements.refreshButton.addEventListener("click", () => {
+        void refreshFromStorage({ showAlertOnRemoteError: true });
+    });
     elements.seedButton.addEventListener("click", seedDemoData);
-    window.addEventListener("storage", refreshFromStorage);
+    window.addEventListener("storage", () => {
+        void refreshFromStorage({ syncRemote: false });
+    });
 }
 
 function handleSearchInput(event) {
@@ -257,11 +267,17 @@ function handleResetForm() {
     renderAddressPreview("Aguardando consulta do CEP.");
 }
 
-function refreshFromStorage() {
+async function refreshFromStorage(options = {}) {
+    const { syncRemote = STORAGE_MODE === "google-sheets", showAlertOnRemoteError = false } = options;
+
     state.orders = loadOrders();
     syncBackupState();
     syncSelectedOrderToVisibleList();
     render();
+
+    if (syncRemote) {
+        await synchronizeRemoteOrders({ showAlertOnError: showAlertOnRemoteError });
+    }
 }
 
 function render() {
@@ -277,7 +293,7 @@ function renderStorageNotice() {
         return;
     }
 
-    elements.storageNotice.hidden = currentStorageStatus.isDurable;
+    elements.storageNotice.hidden = !currentStorageStatus.message;
     elements.storageNotice.textContent = currentStorageStatus.message;
 }
 
@@ -639,7 +655,16 @@ function loadOrders() {
 }
 
 function persistOrders() {
-    storageAdapter.writeOrders(state.orders);
+    const writeResult = storageAdapter.writeOrders(state.orders);
+
+    if (writeResult && typeof writeResult.catch === "function") {
+        writeResult.catch((error) => {
+            console.error("Falha ao sincronizar os pedidos com o Google Sheets.", error);
+            currentStorageStatus = createStorageStatus("google-sheets-write-failed");
+            renderStorageNotice();
+        });
+    }
+
     persistAutomaticCsvBackup(state.orders);
     syncBackupState();
 }
@@ -959,6 +984,22 @@ function parseStoredOrders(storedValue) {
 }
 
 function createStorageStatus(tier) {
+    if (tier === "google-sheets") {
+        return {
+            tier,
+            isDurable: true,
+            message: "Sincronizacao gratuita ativa com Google Sheets. Os pedidos ficam disponiveis para outros acessos tambem."
+        };
+    }
+
+    if (tier === "google-sheets-write-failed") {
+        return {
+            tier,
+            isDurable: false,
+            message: "Salvo neste navegador, mas a sincronizacao com Google Sheets falhou. Use Exportar CSV como backup enquanto corrige a integracao."
+        };
+    }
+
     if (tier === "localStorage") {
         return {
             tier,
@@ -983,15 +1024,106 @@ function createStorageStatus(tier) {
 }
 
 function createGoogleSheetsAdapter() {
+    const localAdapter = createLocalStorageAdapter();
+
     return {
         readOrders() {
-            console.info("Google Sheets adapter ainda nao configurado. Usando painel local como referencia de estrutura.");
-            return [];
+            return localAdapter.readOrders();
         },
-        writeOrders() {
-            console.info("Google Sheets adapter ainda nao configurado. Implemente a chamada da planilha neste ponto.");
+
+        writeOrders(orders) {
+            localAdapter.writeOrders(orders);
+
+            return pushOrdersToGoogleSheets(orders).then(() => {
+                currentStorageStatus = createStorageStatus("google-sheets");
+                renderStorageNotice();
+            });
+        },
+
+        async syncOrders() {
+            const remoteOrders = await fetchOrdersFromGoogleSheets();
+            localAdapter.writeOrders(remoteOrders);
+            currentStorageStatus = createStorageStatus("google-sheets");
+            return remoteOrders;
         }
     };
+}
+
+async function synchronizeRemoteOrders(options = {}) {
+    if (typeof storageAdapter.syncOrders !== "function") {
+        return state.orders;
+    }
+
+    if (remoteSyncInFlight) {
+        return remoteSyncInFlight;
+    }
+
+    const { showAlertOnError = false } = options;
+
+    remoteSyncInFlight = storageAdapter.syncOrders()
+        .then((remoteOrders) => {
+            state.orders = remoteOrders;
+            syncSelectedOrderToVisibleList();
+            render();
+            return remoteOrders;
+        })
+        .catch((error) => {
+            console.error("Falha ao carregar os pedidos do Google Sheets.", error);
+
+            if (showAlertOnError) {
+                window.alert(error.message || "Nao foi possivel sincronizar os pedidos com o Google Sheets.");
+            }
+
+            return state.orders;
+        })
+        .finally(() => {
+            remoteSyncInFlight = null;
+        });
+
+    return remoteSyncInFlight;
+}
+
+async function fetchOrdersFromGoogleSheets() {
+    const response = await fetch(GOOGLE_SHEETS_WEB_APP_URL, {
+        method: "GET",
+        headers: {
+            Accept: "application/json"
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error("A planilha respondeu com erro ao buscar os pedidos.");
+    }
+
+    const payload = await response.json();
+    return parseStoredOrders(JSON.stringify(extractOrdersFromRemotePayload(payload)));
+}
+
+async function pushOrdersToGoogleSheets(orders) {
+    const response = await fetch(GOOGLE_SHEETS_WEB_APP_URL, {
+        method: "POST",
+        headers: {
+            "Content-Type": "text/plain;charset=utf-8",
+            Accept: "application/json"
+        },
+        body: JSON.stringify({ orders })
+    });
+
+    if (!response.ok) {
+        throw new Error("A planilha respondeu com erro ao salvar os pedidos.");
+    }
+}
+
+function extractOrdersFromRemotePayload(payload) {
+    if (Array.isArray(payload)) {
+        return payload;
+    }
+
+    if (Array.isArray(payload?.orders)) {
+        return payload.orders;
+    }
+
+    throw new Error("A resposta da planilha nao trouxe uma lista valida de pedidos.");
 }
 
 function mergeImportedOrders(importedOrders, existingOrders) {

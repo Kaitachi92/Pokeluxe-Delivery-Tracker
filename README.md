@@ -18,6 +18,7 @@ Aplicacao web estatica para organizar pedidos da Pokeluxe, acompanhar status de 
 - Arquivo modelo CSV pronto para baixar e usar como base.
 - Metadados de pagina e favicon prontos para publicacao no GitHub Pages.
 - Persistencia local via `localStorage`, com fallback na aba atual quando o navegador bloquear esse armazenamento.
+- Integracao opcional e gratuita com Google Sheets via Apps Script para salvar os pedidos fora do navegador.
 - Documento de entrega em texto pronto para copiar e opcao de impressao/PDF.
 - Botao de atualizacao para recarregar os dados mais recentes do navegador.
 
@@ -37,5 +38,61 @@ Aplicacao web estatica para organizar pedidos da Pokeluxe, acompanhar status de 
 
 - Os dados ficam salvos apenas no navegador atual; se o `localStorage` estiver indisponivel, o app preserva os pedidos ao atualizar a aba atual.
 - O backup automatico em CSV fica salvo no navegador atual e pode ser baixado depois pelo botao dedicado.
-- A camada de armazenamento foi separada em adaptadores para facilitar uma futura integracao com Google Sheets sem alterar a interface.
+- A camada de armazenamento agora suporta um fluxo opcional de Google Sheets via Apps Script, mantendo `localStorage` como cache e backup do navegador.
 - O campo de itens normaliza entradas separadas por virgula, quebra de linha ou ponto e virgula.
+
+## Persistencia gratuita com Google Sheets
+
+Se voce precisa salvar os pedidos fora do navegador sem custo, use um Google Sheets com Apps Script.
+
+1. Crie uma planilha vazia no Google Sheets.
+2. Abra `Extensoes > Apps Script`.
+3. Cole este script, trocando `NOME_DA_ABA` se quiser:
+
+```javascript
+const SHEET_NAME = "Pedidos";
+
+function getSheet() {
+	const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+	let sheet = spreadsheet.getSheetByName(SHEET_NAME);
+
+	if (!sheet) {
+		sheet = spreadsheet.insertSheet(SHEET_NAME);
+	}
+
+	return sheet;
+}
+
+function doGet() {
+	const sheet = getSheet();
+	const rawValue = sheet.getRange("A1").getValue();
+	const orders = rawValue ? JSON.parse(rawValue) : [];
+
+	return ContentService
+		.createTextOutput(JSON.stringify({ orders }))
+		.setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+	const payload = JSON.parse(e.postData.contents || "{}");
+	const orders = Array.isArray(payload.orders) ? payload.orders : [];
+	const sheet = getSheet();
+
+	sheet.getRange("A1").setValue(JSON.stringify(orders));
+
+	return ContentService
+		.createTextOutput(JSON.stringify({ ok: true, count: orders.length }))
+		.setMimeType(ContentService.MimeType.JSON);
+}
+```
+
+4. Publique em `Implantar > Nova implantacao > App da Web`.
+5. Em `Quem tem acesso`, escolha `Qualquer pessoa com o link`.
+6. Copie a URL do App da Web.
+7. Abra o arquivo `config.js` do projeto e preencha a URL:
+
+```javascript
+window.POKELUXE_GOOGLE_SHEETS_WEB_APP_URL = "COLE_AQUI_A_URL_DO_APPS_SCRIPT";
+```
+
+Sem essa URL, o app continua funcionando so com salvamento local no navegador.

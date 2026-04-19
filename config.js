@@ -1,0 +1,1 @@
+window.POKELUXE_GOOGLE_SHEETS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzYFqpsC48pXXYJweVE-PNhdfOxpFr27xXa_3dccIjGZNhCt12SAnTcvHaCgNUePdCn/exec";
