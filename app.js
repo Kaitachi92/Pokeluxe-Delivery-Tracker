@@ -64,6 +64,7 @@ const elements = {
     refreshButton: document.querySelector("#refreshButton"),
     seedButton: document.querySelector("#seedButton"),
     storageNotice: document.querySelector("#storageNotice"),
+    refreshHint: document.querySelector("#refreshHint"),
     backupStatus: document.querySelector("#backupStatus"),
     totalPedidos: document.querySelector("#totalPedidos"),
     totalSeparacao: document.querySelector("#totalSeparacao"),
@@ -282,6 +283,7 @@ async function refreshFromStorage(options = {}) {
 
 function render() {
     renderStorageNotice();
+    renderRefreshHint();
     renderBackupStatus();
     renderStats();
     renderOrders();
@@ -295,6 +297,14 @@ function renderStorageNotice() {
 
     elements.storageNotice.hidden = !currentStorageStatus.message;
     elements.storageNotice.textContent = currentStorageStatus.message;
+}
+
+function renderRefreshHint() {
+    if (!elements.refreshHint) {
+        return;
+    }
+
+    elements.refreshHint.hidden = STORAGE_MODE !== "google-sheets";
 }
 
 function renderStats() {

@@ -105,7 +105,8 @@ button,
 .address-preview,
 .empty-state,
 .storage-notice,
-.backup-status {
+.backup-status,
+.refresh-hint {
     color: var(--muted);
 }
 
@@ -127,6 +128,14 @@ button,
     margin: 14px 4px 0;
     font-size: 0.95rem;
     font-weight: 700;
+}
+
+.refresh-hint {
+    margin: 12px 4px 0;
+    max-width: 460px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    text-align: right;
 }
 
 .hero-actions,
