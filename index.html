@@ -29,16 +29,20 @@
                 <p class="hero-copy">
                     Centralize pedidos, acompanhe status de envio e gere um documento de entrega pronto para compartilhar com a equipe.
                 </p>
+                <p id="storageNotice" class="storage-notice" hidden></p>
             </div>
             <div class="hero-actions">
                 <button id="refreshButton" class="secondary-button" type="button">Atualizar dados</button>
                 <button id="seedButton" class="ghost-button" type="button">Carregar exemplo</button>
                 <button id="exportCsvButton" class="ghost-button" type="button">Exportar CSV</button>
+                <button id="autoBackupButton" class="ghost-button" type="button">Baixar backup auto</button>
                 <button id="importCsvButton" class="secondary-button" type="button">Importar CSV</button>
                 <a class="secondary-button action-link" href="pokeluxe-modelo-pedidos.csv" download>Modelo CSV</a>
                 <input id="csvFileInput" type="file" accept=".csv,text/csv" hidden>
             </div>
         </header>
+
+        <p id="backupStatus" class="backup-status">Backup automatico CSV ainda nao gerado.</p>
 
         <main class="dashboard-grid">
             <section class="panel form-panel">

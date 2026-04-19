@@ -103,8 +103,30 @@ button,
 .panel-heading p,
 .order-notes,
 .address-preview,
-.empty-state {
+.empty-state,
+.storage-notice,
+.backup-status {
     color: var(--muted);
+}
+
+.storage-notice {
+    margin: 12px 0 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(255, 180, 79, 0.18);
+    border: 1px solid rgba(183, 73, 30, 0.16);
+    color: var(--primary-deep);
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.backup-status {
+    margin: 14px 4px 0;
+    font-size: 0.95rem;
+    font-weight: 700;
 }
 
 .hero-actions,

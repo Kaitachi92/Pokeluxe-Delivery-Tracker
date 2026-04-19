@@ -13,10 +13,11 @@ Aplicacao web estatica para organizar pedidos da Pokeluxe, acompanhar status de 
 - Busca por ID, cliente, item ou rastreio, com filtro por status.
 - Botao para copiar o codigo de rastreio do pedido selecionado.
 - Importacao e exportacao de pedidos em CSV.
+- Backup automatico em CSV atualizado a cada alteracao, com botao para baixar o ultimo snapshot salvo no navegador.
 - Link direto para abrir o rastreio do pedido em Correios, Jadlog, Total Express ou Loggi.
 - Arquivo modelo CSV pronto para baixar e usar como base.
 - Metadados de pagina e favicon prontos para publicacao no GitHub Pages.
-- Persistencia local via `localStorage`.
+- Persistencia local via `localStorage`, com fallback na aba atual quando o navegador bloquear esse armazenamento.
 - Documento de entrega em texto pronto para copiar e opcao de impressao/PDF.
 - Botao de atualizacao para recarregar os dados mais recentes do navegador.
 
@@ -34,6 +35,7 @@ Aplicacao web estatica para organizar pedidos da Pokeluxe, acompanhar status de 
 
 ## Observacoes tecnicas
 
-- Os dados ficam salvos apenas no navegador atual.
+- Os dados ficam salvos apenas no navegador atual; se o `localStorage` estiver indisponivel, o app preserva os pedidos ao atualizar a aba atual.
+- O backup automatico em CSV fica salvo no navegador atual e pode ser baixado depois pelo botao dedicado.
 - A camada de armazenamento foi separada em adaptadores para facilitar uma futura integracao com Google Sheets sem alterar a interface.
 - O campo de itens normaliza entradas separadas por virgula, quebra de linha ou ponto e virgula.

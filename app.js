@@ -1,5 +1,14 @@
 const STORAGE_KEY = "pokeluxe-delivery-tracker-v1";
 const STORAGE_MODE = "local";
+const STORAGE_FALLBACK_KEY = "__pokeluxe_delivery_tracker__";
+const CSV_BACKUP_STORAGE_KEY = "pokeluxe-delivery-tracker-csv-backup-v1";
+const CSV_BACKUP_META_STORAGE_KEY = "pokeluxe-delivery-tracker-csv-backup-meta-v1";
+let currentStorageStatus = {
+    tier: "window-name",
+    isDurable: false,
+    message: "Persistencia temporaria ativa so nesta aba."
+};
+let currentBackupMeta = null;
 
 const STATUS_CONFIG = {
     EM_SEPARACAO: { label: "📦 EM SEPARACAO", className: "status-EM_SEPARACAO" },
@@ -46,11 +55,14 @@ const elements = {
     copyDocumentButton: document.querySelector("#copyDocumentButton"),
     copyTrackingButton: document.querySelector("#copyTrackingButton"),
     exportCsvButton: document.querySelector("#exportCsvButton"),
+    autoBackupButton: document.querySelector("#autoBackupButton"),
     importCsvButton: document.querySelector("#importCsvButton"),
     csvFileInput: document.querySelector("#csvFileInput"),
     exportButton: document.querySelector("#exportButton"),
     refreshButton: document.querySelector("#refreshButton"),
     seedButton: document.querySelector("#seedButton"),
+    storageNotice: document.querySelector("#storageNotice"),
+    backupStatus: document.querySelector("#backupStatus"),
     totalPedidos: document.querySelector("#totalPedidos"),
     totalSeparacao: document.querySelector("#totalSeparacao"),
     totalEnviado: document.querySelector("#totalEnviado"),
@@ -59,6 +71,7 @@ const elements = {
 };
 
 wireEvents();
+syncBackupState();
 render();
 
 function wireEvents() {
@@ -71,6 +84,7 @@ function wireEvents() {
     elements.copyDocumentButton.addEventListener("click", copyDocumentText);
     elements.copyTrackingButton.addEventListener("click", copyTrackingCode);
     elements.exportCsvButton.addEventListener("click", exportOrdersAsCsv);
+    elements.autoBackupButton.addEventListener("click", downloadAutomaticBackup);
     elements.importCsvButton.addEventListener("click", () => elements.csvFileInput.click());
     elements.csvFileInput.addEventListener("change", importOrdersFromCsvFile);
     elements.exportButton.addEventListener("click", () => window.print());
@@ -183,6 +197,61 @@ async function handleCreateOrder(event) {
     render();
 }
 
+function renderBackupStatus() {
+    if (!elements.backupStatus || !elements.autoBackupButton) {
+        return;
+    }
+
+    if (!currentBackupMeta?.createdAt) {
+        elements.backupStatus.textContent = "Backup automatico CSV ainda nao gerado.";
+        elements.autoBackupButton.disabled = true;
+        return;
+    }
+
+    elements.backupStatus.textContent = `Backup automatico CSV pronto: ${formatDateTime(currentBackupMeta.createdAt)}`;
+    elements.autoBackupButton.disabled = false;
+}
+
+function persistAutomaticCsvBackup(orders) {
+    const csvContent = toCsv(orders);
+    const timestamp = new Date().toISOString();
+    const backupMeta = {
+        createdAt: timestamp,
+        fileName: `pokeluxe-backup-auto-${timestamp.slice(0, 19).replace(/[T:]/g, "-")}.csv`
+    };
+
+    writeStructuredStorageValue(CSV_BACKUP_STORAGE_KEY, csvContent);
+    writeStructuredStorageValue(CSV_BACKUP_META_STORAGE_KEY, JSON.stringify(backupMeta));
+    currentBackupMeta = backupMeta;
+}
+
+function syncBackupState() {
+    const storedMeta = readStructuredStorageValue(CSV_BACKUP_META_STORAGE_KEY);
+
+    if (!storedMeta) {
+        currentBackupMeta = null;
+        return;
+    }
+
+    try {
+        currentBackupMeta = JSON.parse(storedMeta);
+    } catch {
+        currentBackupMeta = null;
+    }
+}
+
+function downloadAutomaticBackup() {
+    const csvContent = readStructuredStorageValue(CSV_BACKUP_STORAGE_KEY);
+
+    if (!csvContent) {
+        window.alert("Ainda nao existe backup automatico CSV para baixar.");
+        return;
+    }
+
+    const fileName = currentBackupMeta?.fileName || `pokeluxe-backup-auto-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-")}.csv`;
+    downloadCsvContent(csvContent, fileName);
+}
+
 function handleResetForm() {
     state.lastValidatedAddress = null;
     renderAddressPreview("Aguardando consulta do CEP.");
@@ -190,14 +259,26 @@ function handleResetForm() {
 
 function refreshFromStorage() {
     state.orders = loadOrders();
+    syncBackupState();
     syncSelectedOrderToVisibleList();
     render();
 }
 
 function render() {
+    renderStorageNotice();
+    renderBackupStatus();
     renderStats();
     renderOrders();
     renderSelectedDocument();
+}
+
+function renderStorageNotice() {
+    if (!elements.storageNotice) {
+        return;
+    }
+
+    elements.storageNotice.hidden = currentStorageStatus.isDurable;
+    elements.storageNotice.textContent = currentStorageStatus.message;
 }
 
 function renderStats() {
@@ -396,13 +477,18 @@ function exportOrdersAsCsv() {
     }
 
     const csvContent = toCsv(state.orders);
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
+
+    downloadCsvContent(csvContent, `pokeluxe-pedidos-${timestamp}.csv`);
+}
+
+function downloadCsvContent(csvContent, fileName) {
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
 
     link.href = url;
-    link.download = `pokeluxe-pedidos-${timestamp}.csv`;
+    link.download = fileName;
     document.body.append(link);
     link.click();
     link.remove();
@@ -554,6 +640,8 @@ function loadOrders() {
 
 function persistOrders() {
     storageAdapter.writeOrders(state.orders);
+    persistAutomaticCsvBackup(state.orders);
+    syncBackupState();
 }
 
 function getVisibleOrders() {
@@ -685,11 +773,212 @@ function createStorageAdapter(mode) {
 function createLocalStorageAdapter() {
     return {
         readOrders() {
-            return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            const localResult = readOrdersFromLocalStorage();
+
+            if (localResult.available && localResult.hasStoredValue) {
+                currentStorageStatus = createStorageStatus("localStorage");
+                return localResult.orders;
+            }
+
+            const sessionResult = readOrdersFromSessionStorage();
+
+            if (sessionResult.available && sessionResult.hasStoredValue) {
+                currentStorageStatus = createStorageStatus("sessionStorage");
+
+                if (localResult.available) {
+                    writeOrdersToWebStorage(window.localStorage, JSON.stringify(sessionResult.orders));
+                }
+
+                return sessionResult.orders;
+            }
+
+            currentStorageStatus = createStorageStatus("window-name");
+
+            return readOrdersFromWindowName();
         },
         writeOrders(orders) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+            const serializedOrders = JSON.stringify(orders);
+            let bestTier = "window-name";
+
+            writeOrdersToWindowName(serializedOrders);
+
+            if (writeOrdersToWebStorage(window.sessionStorage, serializedOrders)) {
+                bestTier = "sessionStorage";
+            }
+
+            if (writeOrdersToWebStorage(window.localStorage, serializedOrders)) {
+                bestTier = "localStorage";
+            }
+
+            currentStorageStatus = createStorageStatus(bestTier);
+
+            if (bestTier !== "localStorage") {
+                console.warn("Nao foi possivel persistir os pedidos no localStorage. Mantendo backup local para evitar perda ao atualizar.");
+            }
         }
+    };
+}
+
+function readOrdersFromLocalStorage() {
+    return readOrdersFromWebStorage(window.localStorage);
+}
+
+function readOrdersFromSessionStorage() {
+    return readOrdersFromWebStorage(window.sessionStorage);
+}
+
+function readOrdersFromWebStorage(storage) {
+    try {
+        const storedValue = storage.getItem(STORAGE_KEY);
+
+        return {
+            available: true,
+            hasStoredValue: storedValue !== null,
+            orders: parseStoredOrders(storedValue)
+        };
+    } catch {
+        return {
+            available: false,
+            hasStoredValue: false,
+            orders: []
+        };
+    }
+}
+
+function writeOrdersToWebStorage(storage, serializedOrders) {
+    try {
+        storage.setItem(STORAGE_KEY, serializedOrders);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function readOrdersFromWindowName() {
+    try {
+        const snapshot = JSON.parse(window.name || "{}");
+        return parseStoredOrders(snapshot[STORAGE_FALLBACK_KEY] || null);
+    } catch {
+        return [];
+    }
+}
+
+function writeOrdersToWindowName(serializedOrders) {
+    try {
+        const snapshot = JSON.parse(window.name || "{}");
+        snapshot[STORAGE_FALLBACK_KEY] = serializedOrders;
+        window.name = JSON.stringify(snapshot);
+    } catch {
+        window.name = JSON.stringify({
+            [STORAGE_FALLBACK_KEY]: serializedOrders
+        });
+    }
+}
+
+function readStructuredStorageValue(key) {
+    const localResult = readValueFromWebStorage(window.localStorage, key);
+
+    if (localResult.available && localResult.hasStoredValue) {
+        return localResult.value;
+    }
+
+    const sessionResult = readValueFromWebStorage(window.sessionStorage, key);
+
+    if (sessionResult.available && sessionResult.hasStoredValue) {
+        return sessionResult.value;
+    }
+
+    return readValueFromWindowName(key);
+}
+
+function writeStructuredStorageValue(key, value) {
+    writeValueToWindowName(key, value);
+    writeValueToWebStorage(window.sessionStorage, key, value);
+    writeValueToWebStorage(window.localStorage, key, value);
+}
+
+function readValueFromWebStorage(storage, key) {
+    try {
+        const storedValue = storage.getItem(key);
+
+        return {
+            available: true,
+            hasStoredValue: storedValue !== null,
+            value: storedValue
+        };
+    } catch {
+        return {
+            available: false,
+            hasStoredValue: false,
+            value: null
+        };
+    }
+}
+
+function writeValueToWebStorage(storage, key, value) {
+    try {
+        storage.setItem(key, value);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function readValueFromWindowName(key) {
+    try {
+        const snapshot = JSON.parse(window.name || "{}");
+        return snapshot[key] || null;
+    } catch {
+        return null;
+    }
+}
+
+function writeValueToWindowName(key, value) {
+    try {
+        const snapshot = JSON.parse(window.name || "{}");
+        snapshot[key] = value;
+        window.name = JSON.stringify(snapshot);
+    } catch {
+        window.name = JSON.stringify({
+            [key]: value
+        });
+    }
+}
+
+function parseStoredOrders(storedValue) {
+    if (!storedValue) {
+        return [];
+    }
+
+    try {
+        const parsedValue = JSON.parse(storedValue);
+        return Array.isArray(parsedValue) ? parsedValue : [];
+    } catch {
+        return [];
+    }
+}
+
+function createStorageStatus(tier) {
+    if (tier === "localStorage") {
+        return {
+            tier,
+            isDurable: true,
+            message: ""
+        };
+    }
+
+    if (tier === "sessionStorage") {
+        return {
+            tier,
+            isDurable: false,
+            message: "Persistencia temporaria ativa neste navegador. Os pedidos sobrevivem ao F5, mas podem ser perdidos ao fechar a sessao."
+        };
+    }
+
+    return {
+        tier,
+        isDurable: false,
+        message: "Persistencia temporaria ativa so nesta aba. Evite fechar a aba sem exportar um CSV de backup."
     };
 }
 
